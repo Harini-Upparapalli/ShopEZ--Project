@@ -1,0 +1,32 @@
+import { useEffect, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import api from '../api/axios';
+import { useAuth } from '../context/AuthContext';
+import RelatedProducts from '../components/RelatedProducts';
+import { getImageUrl } from '../utils/image';
+import { fallbackProducts } from '../assets/fallbackProducts';
+
+const ProductDetail = () => {
+  const { id } = useParams(); const { user } = useAuth(); const navigate = useNavigate();
+  const [product, setProduct] = useState(null); const [selectedImage, setSelectedImage] = useState(''); const [size, setSize] = useState(''); const [quantity, setQuantity] = useState(1); const [message, setMessage] = useState(''); const [error, setError] = useState('');
+  const [reviews, setReviews] = useState([]); const [summary, setSummary] = useState({ average: 0, count: 0 }); const [reviewRating, setReviewRating] = useState(5); const [reviewText, setReviewText] = useState(''); const [reviewLoading, setReviewLoading] = useState(false);
+
+  const loadReviews = () => api.get(`/reviews/product/${id}`).then((res) => { setReviews(res.data.reviews || []); setSummary(res.data.summary || { average: 0, count: 0 }); }).catch(() => {});
+  useEffect(() => { api.get(`/products/${id}`).then((res) => { setProduct(res.data); setSelectedImage(res.data.mainImg); if (res.data.sizes?.length) setSize(res.data.sizes[0]); }).catch(() => { const found = fallbackProducts.find((p) => String(p._id) === String(id)); if (found) { setProduct(found); setSelectedImage(found.mainImg); if (found.sizes?.length) setSize(found.sizes[0]); } else setError('Could not load product.'); }); loadReviews(); }, [id]);
+
+  const addToCart = async () => { if (!user) { navigate('/login'); return false; } if (product.stock === 0) { setError('This product is currently out of stock.'); return false; } try { await api.post('/cart', { productId: product._id, size, quantity, price: product.price, discount: product.discount }); setMessage('Added to cart successfully'); setError(''); return true; } catch (err) { setError(err.response?.data?.message || 'Could not add to cart.'); return false; } };
+  const shopNow = async () => { const ok = await addToCart(); if (ok) navigate('/cart'); };
+  const submitReview = async (e) => { e.preventDefault(); if (!user) { navigate('/login'); return; } setReviewLoading(true); setError(''); try { await api.post(`/reviews/product/${id}`, { rating: reviewRating, comment: reviewText }); setReviewText(''); setReviewRating(5); setMessage('Your review has been saved.'); await loadReviews(); } catch (err) { setError(err.response?.data?.message || 'Could not save review.'); } finally { setReviewLoading(false); } };
+
+  if (!product) return <p style={{ padding: '2rem' }}>Loading...</p>;
+  const finalPrice = Math.round(product.price - product.price * (product.discount || 0) / 100); const images = [product.mainImg, ...(product.carousel || [])].filter(Boolean); const average = summary.average || 0;
+  return <>
+    <div className="product-page">
+      <div className="product-gallery"><div className="thumbnail-list">{images.map((img, index) => <img key={index} src={getImageUrl(img)} alt={`${product.title} ${index + 1}`} onClick={() => setSelectedImage(img)} onError={(e) => { e.currentTarget.src = 'https://placehold.co/100?text=EZ'; }} />)}</div><img className="main-product-image" src={getImageUrl(selectedImage)} alt={product.title} onError={(e) => { e.currentTarget.src = 'https://placehold.co/400?text=ShopEZ'; }} /></div>
+      <div className="product-detail-info"><h1>{product.title}</h1><div className="rating">{'★'.repeat(Math.round(average))}{'☆'.repeat(5 - Math.round(average))} <span>{average ? `${average}/5 · ${summary.count} review(s)` : 'No reviews yet'}</span></div><p className="detail-description">{product.description}</p><div className="detail-price"><span className="price">₹{finalPrice.toLocaleString('en-IN')}</span>{product.discount > 0 && <><span className="mrp">₹{product.price.toLocaleString('en-IN')}</span><span className="discount">{product.discount}% OFF</span></>}</div>{product.stock !== undefined && <p className={product.stock > 0 ? 'stock-text' : 'out-stock-text'}>{product.stock > 0 ? `${product.stock} units available` : 'Out of stock'}</p>}{product.sizes?.length > 0 && <div className="size-selector"><h3>Select Size</h3>{product.sizes.map((s) => <button key={s} className={size === s ? 'size-btn active' : 'size-btn'} onClick={() => setSize(s)}>{s}</button>)}</div>}<div className="qty-selector"><h3>Quantity</h3><button disabled={quantity <= 1} onClick={() => setQuantity(Math.max(1, quantity - 1))}>−</button><span>{quantity}</span><button disabled={product.stock !== undefined && quantity >= product.stock} onClick={() => setQuantity(quantity + 1)}>+</button></div>{message && <p className="success-text">{message}</p>}{error && <p className="error-text">{error}</p>}<div className="detail-actions"><button className="secondary-btn" onClick={addToCart} disabled={product.stock === 0}>Add To Cart</button><button className="shop-now-btn" onClick={shopNow} disabled={product.stock === 0}>Buy Now</button></div></div>
+    </div>
+    <section className="reviews-section"><div className="reviews-header"><div><h2>Customer Reviews</h2><p>{summary.count ? `${summary.count} verified-looking customer review(s)` : 'Be the first to review this product.'}</p></div><div className="review-summary"><strong>{average || '—'}</strong><span>★★★★★</span><small>{summary.count} reviews</small></div></div>{user && <form className="review-form" onSubmit={submitReview}><h3>Write a Review</h3><div className="review-stars">{[1,2,3,4,5].map((n) => <button type="button" key={n} className={n <= reviewRating ? 'star selected' : 'star'} onClick={() => setReviewRating(n)}>★</button>)}</div><textarea value={reviewText} onChange={(e) => setReviewText(e.target.value)} placeholder="Share your experience with this product..." maxLength={500} required /><button className="secondary-btn" disabled={reviewLoading}>{reviewLoading ? 'Saving...' : 'Submit Review'}</button></form>}{reviews.length > 0 && <div className="reviews-list">{reviews.map((r) => <article className="review-card" key={r._id}><div className="review-top"><strong>{r.username}</strong><span>{'★'.repeat(r.rating)}{'☆'.repeat(5-r.rating)}</span></div><p>{r.comment}</p><small>{new Date(r.createdAt).toLocaleDateString('en-IN')}</small></article>)}</div>}</section>
+    <RelatedProducts productId={id} />
+  </>;
+};
+export default ProductDetail;
