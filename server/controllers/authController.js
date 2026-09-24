@@ -6,9 +6,22 @@ const JWT_SECRET = process.env.JWT_SECRET || 'shopez_jwt_secret_key_2026';
 
 const generateToken = (user) => {
   return jwt.sign(
-    { id: user._id, username: user.username, usertype: user.usertype },
+    {
+      id: user._id,
+      username: user.username,
+      usertype: user.usertype,
+    },
     JWT_SECRET,
     { expiresIn: '7d' }
+  );
+};
+
+// Email validation
+// The part before @ must contain at least one letter.
+// Numbers and common special characters are allowed.
+const isValidEmail = (email) => {
+  return /^(?=[^@\s]*[A-Za-z])[^@\s]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(
+    email
   );
 };
 
@@ -18,15 +31,39 @@ const register = async (req, res) => {
     const { username, email, password, usertype } = req.body;
 
     if (!username || !email || !password) {
-      return res.status(400).json({ message: 'All fields are required' });
+      return res.status(400).json({
+        message: 'All fields are required',
+      });
     }
 
     const cleanEmail = email.trim().toLowerCase();
     const cleanUsername = username.trim();
 
+    if (!isValidEmail(cleanEmail)) {
+      return res.status(400).json({
+        message:
+          'Please enter a valid email address. The email must contain at least one letter before @.',
+      });
+    }
+
+    if (!cleanUsername) {
+      return res.status(400).json({
+        message: 'Username is required',
+      });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({
+        message: 'Password must be at least 6 characters',
+      });
+    }
+
     const existing = await User.findOne({ email: cleanEmail });
+
     if (existing) {
-      return res.status(400).json({ message: 'Email already registered' });
+      return res.status(400).json({
+        message: 'Email already registered',
+      });
     }
 
     const salt = await bcrypt.genSalt(10);
@@ -43,10 +80,17 @@ const register = async (req, res) => {
 
     res.status(201).json({
       token,
-      user: { id: user._id, username: user.username, email: user.email, usertype: user.usertype },
+      user: {
+        id: user._id,
+        username: user.username,
+        email: user.email,
+        usertype: user.usertype,
+      },
     });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    res.status(500).json({
+      message: error.message,
+    });
   }
 };
 
@@ -56,29 +100,51 @@ const login = async (req, res) => {
     const { email, password } = req.body;
 
     if (!email || !password) {
-      return res.status(400).json({ message: 'Please provide email and password' });
+      return res.status(400).json({
+        message: 'Please provide email and password',
+      });
     }
 
     const cleanEmail = email.trim().toLowerCase();
 
+    if (!isValidEmail(cleanEmail)) {
+      return res.status(400).json({
+        message:
+          'Please enter a valid email address. The email must contain at least one letter before @.',
+      });
+    }
+
     const user = await User.findOne({ email: cleanEmail });
+
     if (!user) {
-      return res.status(400).json({ message: 'Invalid email or password' });
+      return res.status(400).json({
+        message: 'Invalid email or password',
+      });
     }
 
     const isMatch = await bcrypt.compare(password, user.password);
+
     if (!isMatch) {
-      return res.status(400).json({ message: 'Invalid email or password' });
+      return res.status(400).json({
+        message: 'Invalid email or password',
+      });
     }
 
     const token = generateToken(user);
 
     res.status(200).json({
       token,
-      user: { id: user._id, username: user.username, email: user.email, usertype: user.usertype },
+      user: {
+        id: user._id,
+        username: user.username,
+        email: user.email,
+        usertype: user.usertype,
+      },
     });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    res.status(500).json({
+      message: error.message,
+    });
   }
 };
 
@@ -86,11 +152,23 @@ const login = async (req, res) => {
 const getProfile = async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select('-password');
-    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    if (!user) {
+      return res.status(404).json({
+        message: 'User not found',
+      });
+    }
+
     res.status(200).json(user);
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    res.status(500).json({
+      message: error.message,
+    });
   }
 };
 
-module.exports = { register, login, getProfile };
+module.exports = {
+  register,
+  login,
+  getProfile,
+};
